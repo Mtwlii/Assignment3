@@ -1,0 +1,139 @@
+1 - What is the Node.js Event Loop?
+
+==> 5 Phases [Timers - Pending callbacks - Poll - Check - Close callbacks]
+
+1 - Your main code runs first (call stack).
+2 - When Node hits something async — like fs.readFile(), a setTimeout(), or an HTTP request — it hands that task off to the system (via libuv) instead of waiting.
+3 - Your code keeps running past that line, without waiting.
+4 - Once the async task finishes (e.g., the file is read), its callback gets placed into a queue.
+5 - The Event Loop constantly checks: "Is the call stack empty? If so, take the next callback from the queue and run it.
+
+
+//---------------------------------------------------- 
+
+
+2 - What is Libuv and What Role Does It Play in Node.js?
+
+The Event Loop is the mechanism that allows Node.js to perform non-blocking, 
+asynchronous operations, even though JavaScript runs on a single thread.
+When Node.js encounters an asynchronous operation (like reading a file, a timer, or a network request), it doesn't wait for it to finish.
+Instead, it hands the task off to the system, 
+continues executing the rest of the code, and once the task is done, its callback is placed in a queue. 
+The Event Loop continuously checks whether the call stack is empty, and if so, it takes the next callback from the queue and executes it.
+
+
+
+//---------------------------------------------------- 
+
+
+3 - How Does Node.js Handle Asynchronous Operations Under the Hood?
+
+
+    -- 1 - The Call Stack
+
+        This is where your JavaScript code actually executes, line by line, one function at a time (JS is single-threaded). Any synchronous code runs directly here.
+
+     -- 2 - Handing off async tasks
+
+        When the Call Stack reaches an asynchronous operation (e.g., fs.readFile(), setTimeout(), an HTTP request), Node.js does not wait for it. Instead, it delegates the task to either:
+
+            - Libuv's Thread Pool — for tasks like file system operations, DNS lookups
+            - The Operating System — for tasks like network requests, which most OSes can handle asynchronously on their own    
+        The Call Stack is now free to continue executing the rest of the code.
+
+    -- 3 - The task completes in the background
+
+        While your main code keeps running, the delegated task (e.g., reading a file) completes in the background, on a separate thread or via the OS.
+
+    -- 4 - The callback moves to a queue
+
+        - Once the task finishes, its callback function doesn't run immediately — it's placed into a queue, waiting for its turn. Node.js actually has a few different queues, checked in this priority order:
+
+            - Microtask Queue — resolved Promises process.nextTick()
+            - Macrotask Queues — setTimeout/setInterval callbacks, I/O callbacks, setImmediate()
+
+    -- 5 - The Event Loop steps in
+
+        - The Event Loop continuously checks: "Is the Call Stack empty?" 
+        Once it is, the Event Loop pulls the next callback from the queue (microtasks are always fully drained first) and pushes it onto the Call Stack to execute.
+
+ -- Node.js offloads time-consuming operations to Libuv/the OS, keeps executing other code in the meantime,
+     and uses the Event Loop to bring completed callbacks back to run 
+
+
+
+//------------------------------------------------------------------------------------------
+
+
+4 - What is the Difference Between the Call Stack, Event Queue, and Event Loop in Node.js?
+
+    -- 1 - Call Stack
+            A data structure that tracks which function is currently running in your JavaScript code. It's how JavaScript executes code, one function call at a time.
+            How it works:
+
+          - When a function is called, it's pushed onto the stack.
+          - When that function returns/finishes, it's popped off the stack.
+          - Follows LIFO (Last In, First Out) order.
+          The Call Stack only handles synchronous code. It executes things immediately, in order no waiting.
+
+    -- 2 - Event Queue 
+        A waiting line (queue) that holds callback functions that are ready to run, but can't run yet because the Call Stack is busy.
+            How it works:
+
+          - When an async operation finishes (e.g., a setTimeout timer expires, a file finishes reading), its callback isn't run immediately.
+          - Instead, it's placed at the back of the Event Queue.
+          - It waits there until the Call Stack becomes completely empty.
+          - Follows FIFO (First In, First Out) order.
+          The Event Queue is just a holding area it doesn't execute anything by itself.
+          
+    -- 3 - Event Loop
+        The mechanism that connects the Call Stack and the Event Queue. It's not a queue or a stack itself 
+         it's a continuously running process that checks and moves things around.
+            How it works:
+
+          - It constantly asks: "Is the Call Stack empty?"
+          - If yes, it takes the first callback from the Event Queue and pushes it onto the Call Stack to be executed.
+          - This cycle repeats forever, as long as Node.js is running.
+          The Event Loop is the orchestrator — it's what makes asynchronous callbacks actually get executed at the right time.
+
+//------------------------------------------------------------------------------------------
+
+5 - What is the Node.js Thread Pool and How to Set the Thread Pool Size?
+
+    -- 1 - What is the Thread Pool?
+
+        - The Thread Pool is a set of background threads managed by Libuv that Node.js uses to run operations which cannot be handled asynchronously by the operating system alone.
+
+        - Even though Node.js's main JavaScript code runs on a single thread, certain tasks are too heavy or don't have a native async API at the OS level, so Libuv offloads them to these background threads instead of blocking the main thread.
+
+        - By default, the Thread Pool has 4 threads.
+    
+    -- 2 - How to Change the Thread Pool Size?
+
+        - You can increase (or decrease) the pool size using the environment variable UV_THREADPOOL_SIZE, set before Node.
+        js starts (it can't be changed while the program is running).
+            
+            -- In the terminal (Linux/Mac):
+                -UV_THREADPOOL_SIZE=8 node server.js
+            -- In the terminal (Windows CMD):
+                -set UV_THREADPOOL_SIZE=8 && node server.js
+            -- Or set it inside your code, at the very top, before requiring any core modules that use the pool:
+                -process.env.UV_THREADPOOL_SIZE = 8;
+        - Max size	128
+
+//------------------------------------------------------------------------------------------------
+
+
+6 - How Does Node.js Handle Blocking and Non-Blocking Code Execution?
+
+    -- The core idea
+        Node.js runs JavaScript on a single thread. This means only one piece of code can execute at a time.
+        Whether your program stays responsive or "freezes" while doing work depends entirely on whether that work is blocking or non-blocking.
+
+    -- 1 - Blocking Code
+        Blocking code stops everything else from running until it finishes.
+        The single thread is occupied, so nothing else not even handling a new incoming request can happen until that operation completes.
+
+    -- 2 - Non-Blocking Code
+        Non-blocking code hands the task off (to Libuv's thread pool or the OS) and immediately continues executing the rest of the program.
+        The result comes back later via a callback, Promise, or async/await, without freezing the thread.
